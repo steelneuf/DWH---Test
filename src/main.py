@@ -17,6 +17,7 @@ from .InputOutput import (
     write_dashboard_sheet,
     write_detailed_analysis_sheet,
     write_logs_sheet,
+    write_mismatches_sheet,
 )
 from .compare import compare_sources, normalize_key_value
 from .utils import discover_input_sources
@@ -221,6 +222,73 @@ def _create_detailed_column_analysis(sheet_name: str, result_df: pd.DataFrame) -
     return analysis_records
 
 
+def _collect_mismatches(sheet_name: str, result_df: pd.DataFrame, source_map: Dict[str, Path]) -> List[Dict[str, object]]:
+    """Verzamel alle missmatches uit een sheet met informatie over bronnen."""
+    if result_df.empty:
+        return []
+    
+    mismatches = []
+    
+    for _, row in result_df.iterrows():
+        if row.get("BronMatch", "nee") == "ja":
+            continue  # Skip matches, alleen mismatches
+        
+        key_val = str(row.get("Key", "<geen sleutel>"))
+        
+        # Bepaal welke bronnen aanwezig zijn
+        aanwezig_bronnen = []
+        afwezig_bronnen = []
+        
+        for col in result_df.columns:
+            if col.startswith("Aanwezig_"):
+                bron = col.replace("Aanwezig_", "")
+                if row.get(col, "nee") == "ja":
+                    aanwezig_bronnen.append(bron)
+                else:
+                    afwezig_bronnen.append(bron)
+        
+        # Bepaal welke kolommen mismatched zijn
+        mismatched_kolommen = []
+        for col in result_df.columns:
+            if col.startswith("Match_") and col != "Match_Key":
+                kolom_naam = col.replace("Match_", "")
+                if row.get(col, "ja") == "nee":
+                    mismatched_kolommen.append(kolom_naam)
+        
+        # Maak mismatch record
+        mismatch_record = {
+            "Sheet": sheet_name,
+            "Key": key_val,
+            "Aanwezig_In": ", ".join(aanwezig_bronnen) if aanwezig_bronnen else "Geen",
+            "Afwezig_In": ", ".join(afwezig_bronnen) if afwezig_bronnen else "Geen",
+            "Mismatched_Kolommen": ", ".join(mismatched_kolommen) if mismatched_kolommen else "Geen",
+            "Type_Mismatch": _determine_mismatch_type(aanwezig_bronnen, afwezig_bronnen, mismatched_kolommen)
+        }
+        
+        # Voeg kolomwaarden toe voor aanwezige bronnen
+        for bron in aanwezig_bronnen:
+            for col in result_df.columns:
+                if col.startswith(f"{bron}_") and col != f"{bron}_Key":
+                    kolom_naam = col.replace(f"{bron}_", "")
+                    mismatch_record[f"{bron}_{kolom_naam}"] = str(row.get(col, ""))
+        
+        mismatches.append(mismatch_record)
+    
+    return mismatches
+
+
+def _determine_mismatch_type(aanwezig_bronnen: List[str], afwezig_bronnen: List[str], mismatched_kolommen: List[str]) -> str:
+    """Bepaal het type mismatch voor betere categorisering."""
+    if afwezig_bronnen and not aanwezig_bronnen:
+        return "Alleen in één bron"
+    elif afwezig_bronnen and aanwezig_bronnen:
+        return "Deels aanwezig + kolom mismatch"
+    elif mismatched_kolommen:
+        return "Kolom mismatch"
+    else:
+        return "Onbekend"
+
+
 def _safe_series(s: pd.Series) -> pd.Series:
     """Zorg voor een geldige Series voor tellingen."""
     try:
@@ -384,7 +452,7 @@ def process_single_sheet(
     sheet_name: str, 
     cfg: Dict[str, object],
     source_map: Dict[str, Path]
-) -> Tuple[Dict[str, object], List[Dict[str, object]], List[Dict[str, object]], List[Dict[str, object]]]:
+) -> Tuple[Dict[str, object], List[Dict[str, object]], List[Dict[str, object]], List[Dict[str, object]], List[Dict[str, object]]]:
     """Verwerk één sheet: inlezen, vergelijken, loggen en wegschrijven."""
     # Configuratie ophalen
     columns_to_compare, key_column = _process_sheet_configuration(cfg)
@@ -403,6 +471,8 @@ def process_single_sheet(
     dashboard_records = _create_dashboard_records(sheet_name, key_column, source_to_df)
     # Gedetailleerde kolom analyse maken
     detailed_analysis = _create_detailed_column_analysis(sheet_name, result_df)
+    # Missmatches verzamelen
+    sheet_mismatches = _collect_mismatches(sheet_name, result_df, source_map)
     
     # Output schrijven (alleen als writer beschikbaar is)
     if writer is not None:
@@ -413,7 +483,7 @@ def process_single_sheet(
     logger.info(f"Sheet '{sheet_name}': {summary['Matches']} matches, {summary['Mismatches']} mismatches")
     _log_mismatches(result_df, logger)
     
-    return summary, duplicates, dashboard_records, detailed_analysis
+    return summary, duplicates, dashboard_records, detailed_analysis, sheet_mismatches
 
 
 def _handle_source_conflict(label: str, source_map: Dict[str, Path]) -> str:
@@ -477,13 +547,13 @@ def _process_sheet_with_error_handling(
     cfg: Dict[str, object],
     source_map: Dict[str, Path],
     logger
-) -> Tuple[Dict[str, object], List[Dict[str, object]], List[Dict[str, object]], List[Dict[str, object]]]:
+) -> Tuple[Dict[str, object], List[Dict[str, object]], List[Dict[str, object]], List[Dict[str, object]], List[Dict[str, object]]]:
     """Verwerk één sheet met error handling."""
     try:
         return process_single_sheet(logger, None, sheet_name, cfg, source_map)
     except Exception as exc:
         logger.error("Fout bij verwerken van sheet '%s': %s", sheet_name, exc)
-        return _create_error_summary(sheet_name), [], [], []
+        return _create_error_summary(sheet_name), [], [], [], []
 
 
 def _process_all_sheets(
@@ -507,19 +577,22 @@ def _process_all_sheets(
     duplicate_records = []
     dashboard_records: List[Dict[str, object]] = []
     detailed_analysis_records: List[Dict[str, object]] = []
+    all_mismatches: List[Dict[str, object]] = []
+    
+    # Verwerk alle sheets eerst om samenvattingen te verzamelen
+    for sheet_name, cfg in config.items():
+        summary, dups, dash_recs, detailed_analysis, sheet_mismatches = _process_sheet_with_error_handling(
+            sheet_name, cfg, source_map, logger
+        )
+        sheet_summaries.append(summary)
+        duplicate_records.extend(dups)
+        dashboard_records.extend(dash_recs)
+        detailed_analysis_records.extend(detailed_analysis)
+        all_mismatches.extend(sheet_mismatches)
     
     # Schrijf data sheets naar ValidatieOutput.xlsx
     with create_excel_writer(data_output_file) as writer:
         for sheet_name, cfg in config.items():
-            summary, dups, dash_recs, detailed_analysis = _process_sheet_with_error_handling(
-                sheet_name, cfg, source_map, logger
-            )
-            sheet_summaries.append(summary)
-            duplicate_records.extend(dups)
-            dashboard_records.extend(dash_recs)
-            detailed_analysis_records.extend(detailed_analysis)
-            
-            # Schrijf data sheet naar ValidatieOutput.xlsx
             _process_sheet_data_only(writer, sheet_name, cfg, source_map, logger)
     
     # Schrijf testresultaten naar Testresultaat.xlsx
@@ -528,6 +601,7 @@ def _process_all_sheets(
         write_summary_sheet(writer, sheet_summaries)
         write_dashboard_sheet(writer, dashboard_records)
         write_detailed_analysis_sheet(writer, detailed_analysis_records)
+        write_mismatches_sheet(writer, all_mismatches)
         write_logs_sheet(writer, in_memory_logs)
     
     logger.info(f"Data/Validatie-output geschreven naar: {data_output_file.name}")

@@ -138,3 +138,15 @@ def write_detailed_analysis_sheet(writer: pd.ExcelWriter, detailed_analysis_reco
     else:
         info_df = _create_info_dataframe("Geen gedetailleerde analyse beschikbaar.")
         info_df.to_excel(writer, sheet_name="Gedetailleerde Analyse", index=False)
+
+
+def write_mismatches_sheet(writer: pd.ExcelWriter, all_mismatches: List[Dict[str, object]]) -> None:
+    """Schrijf alle missmatches naar een aparte sheet."""
+    if all_mismatches:
+        mismatches_df = pd.DataFrame(all_mismatches)
+        # Sorteer op Sheet, Key voor betere leesbaarheid
+        mismatches_df = mismatches_df.sort_values(["Sheet", "Key"], kind="stable")
+        mismatches_df.to_excel(writer, sheet_name="Missmatches", index=False)
+    else:
+        info_df = _create_info_dataframe("Geen missmatches gevonden - alle rijen matchen perfect tussen de bronnen.")
+        info_df.to_excel(writer, sheet_name="Missmatches", index=False)
