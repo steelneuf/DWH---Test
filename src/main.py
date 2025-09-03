@@ -7,11 +7,10 @@ import pandas as pd
 from .config import data_input_dir, data_output_dir, data_validation_dir, data_inputcolumns_dir
 from .config import read_kolommen_config, find_single_validation_config
 from .logging_setup import setup_logging
-from .InputOutput import (
-    load_sheet,
+from .InputOutput.readers import load_sheet
+from .InputOutput.writers import (
     create_excel_writer,
     write_dataframe_or_info,
-    apply_sheet_styling,
     write_duplicate_sheet,
     write_summary_sheet,
     write_dashboard_sheet,
@@ -19,6 +18,7 @@ from .InputOutput import (
     write_logs_sheet,
     write_mismatches_sheet,
 )
+from .InputOutput.styling import apply_sheet_styling
 from .compare import compare_sources, normalize_key_value
 from .utils import discover_input_sources
 

@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import List, Dict, Optional
 import logging
-from .InputOutput import combine_folder_to_workbook
+from .InputOutput.combiner import combine_folder_to_workbook
 
 
 def _get_logger() -> logging.Logger:
