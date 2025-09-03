@@ -129,13 +129,13 @@ def _create_summary(sheet_name: str, result_df: pd.DataFrame) -> Dict[str, objec
             aanwezig_stats[f"Aanwezig_{bron}"] = aanwezig_count
             aanwezig_stats[f"Aanwezig_{bron}_Percentage"] = round((aanwezig_count / total) * 100, 1) if total > 0 else 0.0
     
-    # Kolom matching statistieken
+    # Kolom matching statistieken - alleen percentages, geen absolute aantallen
     kolom_stats = {}
     for col in result_df.columns:
         if col.startswith("Match_") and col != "Match_Key":
             kolom_naam = col.replace("Match_", "")
             match_count = int((result_df[col] == "ja").sum())
-            kolom_stats[f"Match_{kolom_naam}"] = match_count
+            # Alleen percentage toevoegen, geen absolute aantal
             kolom_stats[f"Match_{kolom_naam}_Percentage"] = round((match_count / total) * 100, 1) if total > 0 else 0.0
     
     # Combineer alle statistieken
@@ -596,12 +596,13 @@ def _process_all_sheets(
             _process_sheet_data_only(writer, sheet_name, cfg, source_map, logger)
     
     # Schrijf testresultaten naar Testresultaat.xlsx
+    # Tab volgorde: 1. Overview, 2. Details, 3. Matches, 4. Missmatches, 5. Dubbele records, 6. Logs
     with create_excel_writer(test_output_file) as writer:
-        write_duplicate_sheet(writer, duplicate_records)
-        write_summary_sheet(writer, sheet_summaries)
         write_dashboard_sheet(writer, dashboard_records)
+        write_summary_sheet(writer, sheet_summaries)
         write_detailed_analysis_sheet(writer, detailed_analysis_records)
         write_mismatches_sheet(writer, all_mismatches)
+        write_duplicate_sheet(writer, duplicate_records)
         write_logs_sheet(writer, in_memory_logs)
     
     logger.info(f"Data/Validatie-output geschreven naar: {data_output_file.name}")

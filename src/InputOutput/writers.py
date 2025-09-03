@@ -73,7 +73,7 @@ def _create_summary_dataframe(sheet_summaries: List[Dict[str, object]]) -> pd.Da
 def write_summary_sheet(writer: pd.ExcelWriter, sheet_summaries: List[Dict[str, object]]) -> None:
     """Schrijf de samenvatting per sheet."""
     summary_df = _create_summary_dataframe(sheet_summaries)
-    summary_df.to_excel(writer, sheet_name="Samenvatting", index=False)
+    summary_df.to_excel(writer, sheet_name="Details", index=False)
 
 
 def write_logs_sheet(writer: pd.ExcelWriter, in_memory_logs: List[Dict[str, str]]) -> None:
@@ -125,7 +125,7 @@ def _create_dashboard_dataframe(dashboard_records: List[Dict[str, object]]) -> p
 def write_dashboard_sheet(writer: pd.ExcelWriter, dashboard_records: List[Dict[str, object]]) -> None:
     """Schrijf Dashboard met per-sheet per-bron statistieken."""
     dash_df = _create_dashboard_dataframe(dashboard_records)
-    dash_df.to_excel(writer, sheet_name="Dashboard", index=False)
+    dash_df.to_excel(writer, sheet_name="Overview", index=False)
 
 
 def write_detailed_analysis_sheet(writer: pd.ExcelWriter, detailed_analysis_records: List[Dict[str, object]]) -> None:
@@ -134,10 +134,10 @@ def write_detailed_analysis_sheet(writer: pd.ExcelWriter, detailed_analysis_reco
         analysis_df = pd.DataFrame(detailed_analysis_records)
         # Sorteer op Sheet, Type, en Kolom voor betere leesbaarheid
         analysis_df = analysis_df.sort_values(["Sheet", "Type", "Kolom"], kind="stable")
-        analysis_df.to_excel(writer, sheet_name="Gedetailleerde Analyse", index=False)
+        analysis_df.to_excel(writer, sheet_name="Matches", index=False)
     else:
         info_df = _create_info_dataframe("Geen gedetailleerde analyse beschikbaar.")
-        info_df.to_excel(writer, sheet_name="Gedetailleerde Analyse", index=False)
+        info_df.to_excel(writer, sheet_name="Matches", index=False)
 
 
 def write_mismatches_sheet(writer: pd.ExcelWriter, all_mismatches: List[Dict[str, object]]) -> None:
