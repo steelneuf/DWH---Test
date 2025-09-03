@@ -10,6 +10,7 @@ from .writers import (
     write_duplicate_sheet,
     write_summary_sheet,
     write_dashboard_sheet,
+    write_detailed_analysis_sheet,
     write_logs_sheet,
 )
 
@@ -28,6 +29,7 @@ __all__ = [
     "write_duplicate_sheet",
     "write_summary_sheet",
     "write_dashboard_sheet",
+    "write_detailed_analysis_sheet",
     "write_logs_sheet",
     "apply_sheet_styling",
     "combine_folder_to_workbook",

@@ -15,6 +15,7 @@ from .InputOutput import (
     write_duplicate_sheet,
     write_summary_sheet,
     write_dashboard_sheet,
+    write_detailed_analysis_sheet,
     write_logs_sheet,
 )
 from .compare import compare_sources, normalize_key_value
@@ -98,13 +99,126 @@ def _find_all_duplicates(
 
 
 def _create_summary(sheet_name: str, result_df: pd.DataFrame) -> Dict[str, object]:
-    """Maak samenvatting van resultaten."""
-    return {
+    """Maak samenvatting van resultaten met gedetailleerde match informatie."""
+    if result_df.empty:
+        return {
+            "Sheet": sheet_name,
+            "Totaal": 0,
+            "Matches": 0,
+            "Mismatches": 0,
+            "Match_Key": 0,
+            "Match_Key_Percentage": 0.0,
+        }
+    
+    # Basis tellingen
+    total = len(result_df)
+    matches = int((result_df["BronMatch"] == "ja").sum())
+    mismatches = int((result_df["BronMatch"] == "nee").sum())
+    
+    # Key matching statistieken
+    match_key_count = int((result_df.get("Match_Key", pd.Series([], dtype="string")) == "ja").sum())
+    match_key_percentage = round((match_key_count / total) * 100, 1) if total > 0 else 0.0
+    
+    # Aanwezigheid per bron
+    aanwezig_stats = {}
+    for col in result_df.columns:
+        if col.startswith("Aanwezig_"):
+            bron = col.replace("Aanwezig_", "")
+            aanwezig_count = int((result_df[col] == "ja").sum())
+            aanwezig_stats[f"Aanwezig_{bron}"] = aanwezig_count
+            aanwezig_stats[f"Aanwezig_{bron}_Percentage"] = round((aanwezig_count / total) * 100, 1) if total > 0 else 0.0
+    
+    # Kolom matching statistieken
+    kolom_stats = {}
+    for col in result_df.columns:
+        if col.startswith("Match_") and col != "Match_Key":
+            kolom_naam = col.replace("Match_", "")
+            match_count = int((result_df[col] == "ja").sum())
+            kolom_stats[f"Match_{kolom_naam}"] = match_count
+            kolom_stats[f"Match_{kolom_naam}_Percentage"] = round((match_count / total) * 100, 1) if total > 0 else 0.0
+    
+    # Combineer alle statistieken
+    summary = {
         "Sheet": sheet_name,
-        "Totaal": len(result_df),
-        "Matches": int((result_df["BronMatch"] == "ja").sum()),
-        "Mismatches": int((result_df["BronMatch"] == "nee").sum()),
+        "Totaal": total,
+        "Matches": matches,
+        "Mismatches": mismatches,
+        "Match_Key": match_key_count,
+        "Match_Key_Percentage": match_key_percentage,
     }
+    summary.update(aanwezig_stats)
+    summary.update(kolom_stats)
+    
+    return summary
+
+
+def _create_detailed_column_analysis(sheet_name: str, result_df: pd.DataFrame) -> List[Dict[str, object]]:
+    """Maak gedetailleerde analyse per kolom voor betere inzicht in matches/mismatches."""
+    if result_df.empty:
+        return []
+    
+    analysis_records = []
+    total_rows = len(result_df)
+    
+    # Analyseer elke kolom die we vergelijken
+    for col in result_df.columns:
+        if col.startswith("Match_") and col != "Match_Key":
+            kolom_naam = col.replace("Match_", "")
+            match_count = int((result_df[col] == "ja").sum())
+            mismatch_count = int((result_df[col] == "nee").sum())
+            match_percentage = round((match_count / total_rows) * 100, 1) if total_rows > 0 else 0.0
+            mismatch_percentage = round((mismatch_count / total_rows) * 100, 1) if total_rows > 0 else 0.0
+            
+            analysis_records.append({
+                "Sheet": sheet_name,
+                "Kolom": kolom_naam,
+                "Type": "Kolom Matching",
+                "Matches": match_count,
+                "Mismatches": mismatch_count,
+                "Match_Percentage": match_percentage,
+                "Mismatch_Percentage": mismatch_percentage,
+                "Totaal_Rijen": total_rows
+            })
+    
+    # Analyseer aanwezigheid per bron
+    for col in result_df.columns:
+        if col.startswith("Aanwezig_"):
+            bron = col.replace("Aanwezig_", "")
+            aanwezig_count = int((result_df[col] == "ja").sum())
+            afwezig_count = int((result_df[col] == "nee").sum())
+            aanwezig_percentage = round((aanwezig_count / total_rows) * 100, 1) if total_rows > 0 else 0.0
+            afwezig_percentage = round((afwezig_count / total_rows) * 100, 1) if total_rows > 0 else 0.0
+            
+            analysis_records.append({
+                "Sheet": sheet_name,
+                "Kolom": f"Key in {bron}",
+                "Type": "Aanwezigheid",
+                "Matches": aanwezig_count,
+                "Mismatches": afwezig_count,
+                "Match_Percentage": aanwezig_percentage,
+                "Mismatch_Percentage": afwezig_percentage,
+                "Totaal_Rijen": total_rows
+            })
+    
+    # Voeg key matching toe
+    if "Match_Key" in result_df.columns:
+        match_key_count = int((result_df["Match_Key"] == "ja").sum())
+        mismatch_key_count = int((result_df["Match_Key"] == "nee").sum())
+        match_key_percentage = round((match_key_count / total_rows) * 100, 1) if total_rows > 0 else 0.0
+        mismatch_key_percentage = round((mismatch_key_count / total_rows) * 100, 1) if total_rows > 0 else 0.0
+        
+        analysis_records.append({
+            "Sheet": sheet_name,
+            "Kolom": "Key",
+            "Type": "Key Matching",
+            "Matches": match_key_count,
+            "Mismatches": mismatch_key_count,
+            "Match_Percentage": match_key_percentage,
+            "Mismatch_Percentage": mismatch_key_percentage,
+            "Totaal_Rijen": total_rows
+        })
+    
+    return analysis_records
 
 
 def _safe_series(s: pd.Series) -> pd.Series:
@@ -270,7 +384,7 @@ def process_single_sheet(
     sheet_name: str, 
     cfg: Dict[str, object],
     source_map: Dict[str, Path]
-) -> Tuple[Dict[str, object], List[Dict[str, object]], List[Dict[str, object]]]:
+) -> Tuple[Dict[str, object], List[Dict[str, object]], List[Dict[str, object]], List[Dict[str, object]]]:
     """Verwerk één sheet: inlezen, vergelijken, loggen en wegschrijven."""
     # Configuratie ophalen
     columns_to_compare, key_column = _process_sheet_configuration(cfg)
@@ -287,6 +401,8 @@ def process_single_sheet(
     duplicates = _find_all_duplicates(source_to_df, key_column, sheet_name, logger)
     # Dashboard records maken
     dashboard_records = _create_dashboard_records(sheet_name, key_column, source_to_df)
+    # Gedetailleerde kolom analyse maken
+    detailed_analysis = _create_detailed_column_analysis(sheet_name, result_df)
     
     # Output schrijven (alleen als writer beschikbaar is)
     if writer is not None:
@@ -297,7 +413,7 @@ def process_single_sheet(
     logger.info(f"Sheet '{sheet_name}': {summary['Matches']} matches, {summary['Mismatches']} mismatches")
     _log_mismatches(result_df, logger)
     
-    return summary, duplicates, dashboard_records
+    return summary, duplicates, dashboard_records, detailed_analysis
 
 
 def _handle_source_conflict(label: str, source_map: Dict[str, Path]) -> str:
@@ -351,6 +467,8 @@ def _create_error_summary(sheet_name: str) -> Dict[str, object]:
         "Totaal": 0,
         "Matches": 0,
         "Mismatches": 0,
+        "Match_Key": 0,
+        "Match_Key_Percentage": 0.0,
     }
 
 
@@ -359,13 +477,13 @@ def _process_sheet_with_error_handling(
     cfg: Dict[str, object],
     source_map: Dict[str, Path],
     logger
-) -> Tuple[Dict[str, object], List[Dict[str, object]], List[Dict[str, object]]]:
+) -> Tuple[Dict[str, object], List[Dict[str, object]], List[Dict[str, object]], List[Dict[str, object]]]:
     """Verwerk één sheet met error handling."""
     try:
         return process_single_sheet(logger, None, sheet_name, cfg, source_map)
     except Exception as exc:
         logger.error("Fout bij verwerken van sheet '%s': %s", sheet_name, exc)
-        return _create_error_summary(sheet_name), [], []
+        return _create_error_summary(sheet_name), [], [], []
 
 
 def _process_all_sheets(
@@ -388,16 +506,18 @@ def _process_all_sheets(
     sheet_summaries = []
     duplicate_records = []
     dashboard_records: List[Dict[str, object]] = []
+    detailed_analysis_records: List[Dict[str, object]] = []
     
     # Schrijf data sheets naar ValidatieOutput.xlsx
     with create_excel_writer(data_output_file) as writer:
         for sheet_name, cfg in config.items():
-            summary, dups, dash_recs = _process_sheet_with_error_handling(
+            summary, dups, dash_recs, detailed_analysis = _process_sheet_with_error_handling(
                 sheet_name, cfg, source_map, logger
             )
             sheet_summaries.append(summary)
             duplicate_records.extend(dups)
             dashboard_records.extend(dash_recs)
+            detailed_analysis_records.extend(detailed_analysis)
             
             # Schrijf data sheet naar ValidatieOutput.xlsx
             _process_sheet_data_only(writer, sheet_name, cfg, source_map, logger)
@@ -407,6 +527,7 @@ def _process_all_sheets(
         write_duplicate_sheet(writer, duplicate_records)
         write_summary_sheet(writer, sheet_summaries)
         write_dashboard_sheet(writer, dashboard_records)
+        write_detailed_analysis_sheet(writer, detailed_analysis_records)
         write_logs_sheet(writer, in_memory_logs)
     
     logger.info(f"Data/Validatie-output geschreven naar: {data_output_file.name}")

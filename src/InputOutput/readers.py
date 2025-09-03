@@ -6,6 +6,11 @@ import logging
 
 def _read_csv_file(file_path: Path) -> pd.DataFrame:
     """Lees CSV bestand in als DataFrame."""
+    if not file_path.exists():
+        logging.getLogger("validation").warning(
+            "CSV bestand niet gevonden: '%s'", file_path
+        )
+        return pd.DataFrame()
     try:
         return pd.read_csv(file_path, dtype=str)
     except Exception as exc:
@@ -17,6 +22,11 @@ def _read_csv_file(file_path: Path) -> pd.DataFrame:
 
 def _read_excel_file(file_path: Path, sheet_name: str) -> pd.DataFrame:
     """Lees Excel bestand in als DataFrame."""
+    if not file_path.exists():
+        logging.getLogger("validation").warning(
+            "Excel bestand niet gevonden: '%s'", file_path
+        )
+        return pd.DataFrame()
     try:
         return pd.read_excel(file_path, sheet_name=sheet_name, engine="openpyxl", dtype=str)
     except Exception as exc:
@@ -33,6 +43,9 @@ def load_sheet(file_path: Path, sheet_name: str) -> pd.DataFrame:
     - Voor .xlsx: probeert sheet `sheet_name` te lezen.
     - Voor .csv: negeert `sheet_name` en leest het bestand als CSV.
     """
+    if not file_path.exists():
+        logging.getLogger("validation").warning("Bestand niet gevonden: '%s'", file_path)
+        return pd.DataFrame()
     suffix = file_path.suffix.lower()
     if suffix == ".csv":
         return _read_csv_file(file_path)
@@ -42,14 +55,21 @@ def load_sheet(file_path: Path, sheet_name: str) -> pd.DataFrame:
 
 def _read_csv_data(file: Path) -> Optional[pd.DataFrame]:
     """Lees CSV bestand in."""
+    if not file.exists():
+        logging.getLogger("validation").warning("CSV bestand niet gevonden: '%s'", file)
+        return None
     try:
         return pd.read_csv(file, dtype=str)
-    except Exception:
+    except Exception as exc:
+        logging.getLogger("validation").warning("Kon CSV '%s' niet lezen: %s", file.name, exc)
         return None
 
 
 def _read_excel_data(file: Path) -> Optional[pd.DataFrame]:
     """Lees Excel bestand in."""
+    if not file.exists():
+        logging.getLogger("validation").warning("Excel bestand niet gevonden: '%s'", file)
+        return None
     try:
         xls = pd.ExcelFile(file, engine="openpyxl")
         # Neem de eerste sheet als bron
@@ -57,7 +77,8 @@ def _read_excel_data(file: Path) -> Optional[pd.DataFrame]:
         if sheet_name:
             return pd.read_excel(xls, sheet_name=sheet_name, dtype=str)
         return None
-    except Exception:
+    except Exception as exc:
+        logging.getLogger("validation").warning("Kon Excel '%s' niet lezen: %s", file.name, exc)
         return None
 
 

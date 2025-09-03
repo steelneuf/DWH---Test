@@ -126,3 +126,15 @@ def write_dashboard_sheet(writer: pd.ExcelWriter, dashboard_records: List[Dict[s
     """Schrijf Dashboard met per-sheet per-bron statistieken."""
     dash_df = _create_dashboard_dataframe(dashboard_records)
     dash_df.to_excel(writer, sheet_name="Dashboard", index=False)
+
+
+def write_detailed_analysis_sheet(writer: pd.ExcelWriter, detailed_analysis_records: List[Dict[str, object]]) -> None:
+    """Schrijf gedetailleerde kolom analyse naar een aparte sheet."""
+    if detailed_analysis_records:
+        analysis_df = pd.DataFrame(detailed_analysis_records)
+        # Sorteer op Sheet, Type, en Kolom voor betere leesbaarheid
+        analysis_df = analysis_df.sort_values(["Sheet", "Type", "Kolom"], kind="stable")
+        analysis_df.to_excel(writer, sheet_name="Gedetailleerde Analyse", index=False)
+    else:
+        info_df = _create_info_dataframe("Geen gedetailleerde analyse beschikbaar.")
+        info_df.to_excel(writer, sheet_name="Gedetailleerde Analyse", index=False)
